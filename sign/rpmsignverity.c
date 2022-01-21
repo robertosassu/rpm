@@ -99,7 +99,7 @@ rpmRC rpmSignVerity(FD_t fd, Header sigh, Header h, char *key,
 		    char *keypass, char *cert, uint16_t algo)
 {
     int rc;
-    FD_t gzdi;
+    FD_t gzdi = NULL;
     rpmfiles files = NULL;
     rpmfi fi = NULL;
     rpmfi hfi = rpmfiNew(NULL, h, RPMTAG_BASENAMES, RPMFI_FLAGS_QUERY);
@@ -225,5 +225,6 @@ rpmRC rpmSignVerity(FD_t fd, Header sigh, Header h, char *key,
     rpmfiFree(fi);
     rpmfiFree(hfi);
     rpmtsFree(ts);
+    Fclose(gzdi);
     return rc;
 }
