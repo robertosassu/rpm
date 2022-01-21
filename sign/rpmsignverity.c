@@ -113,12 +113,13 @@ rpmRC rpmSignVerity(FD_t fd, Header sigh, Header h, char *key,
     size_t sig_size;
     int nr_files = 0, idx;
     uint32_t algo32;
+    Header tmp = NULL;
 
     Fseek(fd, 0, SEEK_SET);
     rpmtsSetVSFlags(ts, RPMVSF_MASK_NODIGESTS | RPMVSF_MASK_NOSIGNATURES |
 		    RPMVSF_NOHDRCHK);
 
-    rc = rpmReadPackageFile(ts, fd, "fsverity", &h);
+    rc = rpmReadPackageFile(ts, fd, "fsverity", &tmp);
     if (rc != RPMRC_OK) {
 	rpmlog(RPMLOG_DEBUG, _("%s: rpmReadPackageFile returned %i\n"),
 	       __func__, rc);
@@ -128,7 +129,7 @@ rpmRC rpmSignVerity(FD_t fd, Header sigh, Header h, char *key,
     rpmlog(RPMLOG_DEBUG, _("key: %s\n"), key);
     rpmlog(RPMLOG_DEBUG, _("cert: %s\n"), cert);
 
-    compr = headerGetString(h, RPMTAG_PAYLOADCOMPRESSOR);
+    compr = headerGetString(tmp, RPMTAG_PAYLOADCOMPRESSOR);
     rpmio_flags = rstrscat(NULL, "r.", compr ? compr : "gzip", NULL);
 
     gzdi = Fdopen(fdDup(Fileno(fd)), rpmio_flags);
@@ -136,7 +137,7 @@ rpmRC rpmSignVerity(FD_t fd, Header sigh, Header h, char *key,
     if (!gzdi)
 	rpmlog(RPMLOG_DEBUG, _("Fdopen() failed\n"));
 
-    files = rpmfilesNew(NULL, h, RPMTAG_BASENAMES, RPMFI_FLAGS_QUERY);
+    files = rpmfilesNew(NULL, tmp, RPMTAG_BASENAMES, RPMFI_FLAGS_QUERY);
     fi = rpmfiNewArchiveReader(gzdi, files,
 			       RPMFI_ITER_READ_ARCHIVE_OMIT_HARDLINKS);
 
@@ -233,6 +234,7 @@ rpmRC rpmSignVerity(FD_t fd, Header sigh, Header h, char *key,
     rpmfiFree(fi);
     rpmfiFree(hfi);
     rpmtsFree(ts);
+    headerFree(tmp);
     Fclose(gzdi);
     return rc;
 }
