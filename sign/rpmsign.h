@@ -57,4 +57,16 @@ int rpmPkgDelFileSign(const char *path, const struct rpmSignArgs * args);
 }
 #endif
 
+/**  \ingroup rpmsign
+ * Generate GPG signature(s) for a header+payload file from all args.
+ * @param sigh		signature header
+ * @param ishdr		header-only signature?
+ * @param fd		file descriptor data is read from
+ * @param fileName	name of the file containing data to be signed
+ * @param start		offset at which data is taken
+ * @param size		size of the data to sign
+ * @return		generated sigtag on success, 0 on failure
+ */
+rpmtd makeGPGSignatureArgs(Header sigh, int ishdr, FD_t fd,
+			   const char *fileName, off_t start, rpm_loff_t size);
 #endif /* _RPMSIGN_H */

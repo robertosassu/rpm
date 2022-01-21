@@ -332,6 +332,14 @@ exit:
     return sigtd;
 }
 
+rpmtd makeGPGSignatureArgs(Header sigh, int ishdr, FD_t fd,
+			   const char *fileName, off_t start, rpm_loff_t size)
+{
+	struct sigTarget_s target = { fd, fileName, start, size };
+
+	return makeGPGSignature(sigh, ishdr, &target);
+}
+
 static void deleteSigs(Header sigh)
 {
     headerDel(sigh, RPMSIGTAG_GPG);
