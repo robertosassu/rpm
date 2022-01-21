@@ -492,6 +492,7 @@ static rpmRC includeVeritySignatures(FD_t fd, Header *sigp, Header *hdrp)
     free(keypass);
     free(key);
     free(cert);
+    free(algorithm);
     return rc;
 #else
     rpmlog(RPMLOG_ERR, _("fsverity signing support not built in\n"));

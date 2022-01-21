@@ -73,6 +73,7 @@ static char *rpmVeritySignFile(rpmfi fi, size_t *sig_size, char *key,
 	   digest_base64, rpmfiFX(fi));
 
     free(digest_hex);
+    free(digest_base64);
 
     memset(&sig_params, 0, sizeof(struct libfsverity_signature_params));
     sig_params.keyfile = key;
@@ -110,7 +111,7 @@ rpmRC rpmSignVerity(FD_t fd, Header sigh, Header h, char *key,
     char *sig_hex;
     char **signatures = NULL;
     size_t sig_size;
-    int nr_files, idx;
+    int nr_files = 0, idx;
     uint32_t algo32;
 
     Fseek(fd, 0, SEEK_SET);
@@ -190,8 +191,6 @@ rpmRC rpmSignVerity(FD_t fd, Header sigh, Header h, char *key,
 	}
 	rpmlog(RPMLOG_DEBUG, _("signature: %s\n"), signatures[idx]);
 	rpmlog(RPMLOG_DEBUG, _("digest signed, len: %li\n"), sig_size);
-	free(signatures[idx]);
-	signatures[idx] = NULL;
     }
 
     if (sig_size == 0) {
@@ -215,6 +214,10 @@ rpmRC rpmSignVerity(FD_t fd, Header sigh, Header h, char *key,
 
     rc = RPMRC_OK;
  out:
+    for (idx = 0; idx < nr_files; idx++) {
+	free(signatures[idx]);
+	signatures[idx] = NULL;
+    }
     signatures = _free(signatures);
     Fseek(fd, offset, SEEK_SET);
 
