@@ -175,6 +175,14 @@ rpmRC rpmSignVerity(FD_t fd, Header sigh, Header h, char *key,
 	    continue;
 	signatures[idx] = rpmVeritySignFile(hfi, &sig_size, key, keypass, cert,
 					    algo);
+	if (!signatures[idx]) {
+	    signatures[idx] = strdup("");
+	    if (!signatures[idx]) {
+		rpmlog(RPMLOG_ERR, _("Cannot allocate fsverity signature\n"));
+		rc = RPMRC_FAIL;
+		goto out;
+	    }
+	}
     }
 
     rpmtdReset(&td);
