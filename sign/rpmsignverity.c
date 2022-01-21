@@ -10,6 +10,7 @@
 #include <rpm/rpmlog.h>		/* rpmlog */
 #include <rpm/rpmfi.h>
 #include <rpm/rpmpgp.h>		/* rpmDigestLength */
+#include <rpm/rpmfileutil.h>	/* rpmGetPath */
 #include "lib/header.h"		/* HEADERGET_MINMEM */
 #include "lib/header_internal.h"
 #include "lib/rpmtypes.h"	/* rpmRC */
@@ -19,8 +20,10 @@
 #include "lib/rpmvs.h"
 
 #include "sign/rpmsignverity.h"
+#include "sign/rpmsign.h"
 
 #define MAX_SIGNATURE_LENGTH 1024
+#define FSVERITY_MAGIC "FSVerity"
 
 static int rpmVerityRead(void *opaque, void *buf, size_t size)
 {
@@ -34,6 +37,73 @@ static int rpmVerityRead(void *opaque, void *buf, size_t size)
 	return retval;
 }
 
+static int rpmVeritySignFileGPG(struct libfsverity_digest *digest,
+				uint8_t **sig, size_t *sig_size)
+{
+    char *targetfile = NULL, *signfile = NULL;
+    FD_t targetfile_fd = NULL;
+    ssize_t written;
+    const char *magic = FSVERITY_MAGIC;
+    uint16_t digest_algorithm, digest_size;
+    rpmtd sigtd = NULL;
+    size_t data_size;
+    rpmRC ret = RPMRC_FAIL;
+
+    targetfile_fd = rpmMkTempFile("/", &targetfile);
+    if (Ferror(targetfile_fd))
+	goto out;
+
+    written = Fwrite(magic, strlen(magic), 1, targetfile_fd);
+    if (written != strlen(magic))
+	goto out;
+
+    digest_algorithm = htole16(digest->digest_algorithm);
+    written = Fwrite(&digest_algorithm, sizeof(digest_algorithm), 1,
+		     targetfile_fd);
+    if (written != sizeof(digest_algorithm))
+	goto out;
+
+    digest_size = htole16(digest->digest_size);
+    written = Fwrite(&digest_size, sizeof(digest_size), 1, targetfile_fd);
+    if (written != sizeof(digest_size))
+	goto out;
+
+    written = Fwrite(digest->digest, digest->digest_size, 1, targetfile_fd);
+    if (written != digest->digest_size)
+	goto out;
+
+    signfile = rpmGetPath(targetfile, ".sig", NULL);
+    if (!signfile)
+	goto out;
+
+    data_size = sizeof(FSVERITY_MAGIC) - 1 + 2 * sizeof(uint16_t) + digest_size;
+
+    sigtd = makeGPGSignatureArgs(NULL, 0, targetfile_fd, targetfile, 0,
+				 data_size);
+    if (!sigtd) {
+	rpmlog(RPMLOG_DEBUG, _("failed to sign digest\n"));
+	goto out;
+    }
+
+    *sig = malloc(sigtd->count);
+    if (!*sig) {
+	rpmlog(RPMLOG_DEBUG, _("failed to allocate memory for signature\n"));
+	goto out;
+    }
+
+    memcpy(*sig, sigtd->data, sigtd->count);
+    *sig_size = sigtd->count;
+    ret = RPMRC_OK;
+ out:
+    unlink(targetfile);
+    free(targetfile);
+    unlink(signfile);
+    free(signfile);
+    Fclose(targetfile_fd);
+    rpmtdFree(sigtd);
+    return ret;
+}
+
 static char *rpmVeritySignFile(rpmfi fi, size_t *sig_size, char *key,
 			       char *keypass, char *cert, uint16_t algo)
 {
@@ -44,6 +114,7 @@ static char *rpmVeritySignFile(rpmfi fi, size_t *sig_size, char *key,
     char *digest_hex, *digest_base64, *sig_base64 = NULL, *sig_hex = NULL;
     uint8_t *sig = NULL;
     int status;
+    rpmRC ret;
 
     if (S_ISLNK(rpmfiFMode(fi)))
 	file_size = 0;
@@ -75,6 +146,14 @@ static char *rpmVeritySignFile(rpmfi fi, size_t *sig_size, char *key,
     free(digest_hex);
     free(digest_base64);
 
+    if (!strcmp(key, "_GPG_") && !strcmp(cert, "_GPG_")) {
+	ret = rpmVeritySignFileGPG(digest, &sig, sig_size);
+	if (ret != RPMRC_OK)
+	    goto out;
+
+	goto out_hex;
+    }
+
     memset(&sig_params, 0, sizeof(struct libfsverity_signature_params));
     sig_params.keyfile = key;
     sig_params.certfile = cert;
@@ -83,6 +162,7 @@ static char *rpmVeritySignFile(rpmfi fi, size_t *sig_size, char *key,
 	goto out;
     }
 
+ out_hex:
     sig_hex = pgpHexStr(sig, *sig_size);
     sig_base64 = rpmBase64Encode(sig, *sig_size, -1);
     rpmlog(RPMLOG_DEBUG, _("%s: sig_size(%li), base64_size(%li), idx %i: signature:\n%s\n"),
